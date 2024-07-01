@@ -1,4 +1,5 @@
-import { Restaurant, Product, RestaurantCategory, ProductCategory } from '../models/models.js'
+import { Restaurant, Product, RestaurantCategory, ProductCategory, sequelizeSession } from '../models/models.js'
+import { Sequelize } from 'sequelize'
 
 const index = async function (req, res) {
   try {
@@ -19,17 +20,38 @@ const index = async function (req, res) {
   }
 }
 
+// SOLUCION
+async function pinnedRestaurantsArray (req) {
+  return await Restaurant.findAll(
+    {
+      attributes: { exclude: ['userId'] },
+      where: { userId: req.user.id, pinnedAt: { [Sequelize.Op.ne]: null } },
+
+      include: [{
+        model: RestaurantCategory,
+        as: 'restaurantCategory'
+      }],
+      order: [['pinnedAt', 'ASC']]
+    })
+}
+
+async function notPinnedRestaurantsArray (req) {
+  return await Restaurant.findAll(
+    {
+      attributes: { exclude: ['userId'] },
+      where: { userId: req.user.id, pinnedAt: null },
+      include: [{
+        model: RestaurantCategory,
+        as: 'restaurantCategory'
+      }]
+    })
+}
+
 const indexOwner = async function (req, res) {
   try {
-    const restaurants = await Restaurant.findAll(
-      {
-        attributes: { exclude: ['userId'] },
-        where: { userId: req.user.id },
-        include: [{
-          model: RestaurantCategory,
-          as: 'restaurantCategory'
-        }]
-      })
+    const restaurantsPinned = await pinnedRestaurantsArray(req)
+    const restaurantsNotPinned = await notPinnedRestaurantsArray(req)
+    const restaurants = [...restaurantsPinned, ...restaurantsNotPinned]
     res.json(restaurants)
   } catch (err) {
     res.status(500).send(err)
@@ -39,6 +61,9 @@ const indexOwner = async function (req, res) {
 const create = async function (req, res) {
   const newRestaurant = Restaurant.build(req.body)
   newRestaurant.userId = req.user.id // usuario actualmente autenticado
+  // SOLUCION
+  newRestaurant.pinnedAt = req.body.pinned ? new Date() : null
+
   try {
     const restaurant = await newRestaurant.save()
     res.json(restaurant)
@@ -72,6 +97,7 @@ const show = async function (req, res) {
 
 const update = async function (req, res) {
   try {
+    // Si tmb fuera aztualizar:  req.body.pinnedAt = req.body.pinned ? new Date() : null
     await Restaurant.update(req.body, { where: { id: req.params.restaurantId } })
     const updatedRestaurant = await Restaurant.findByPk(req.params.restaurantId)
     res.json(updatedRestaurant)
@@ -95,12 +121,31 @@ const destroy = async function (req, res) {
   }
 }
 
+// SOLUCION
+const pin = async function (req, res) {
+  const t = await sequelizeSession.transaction()
+  try {
+    const restaurantPinned = await Restaurant.findByPk(req.params.restaurantId)
+    await Restaurant.update(
+      { pinnedAt: restaurantPinned.pinnedAt ? null : new Date() },
+      { where: { id: restaurantPinned.id } },
+      { transaction: t })
+    await t.commit()
+    const updatedRestaurant = await Restaurant.findByPk(req.params.restaurantId)
+    res.json(updatedRestaurant)
+  } catch (err) {
+    await t.rollback()
+    res.status(500).send(err)
+  }
+}
+
 const RestaurantController = {
   index,
   indexOwner,
   create,
   show,
   update,
-  destroy
+  destroy,
+  pin
 }
 export default RestaurantController

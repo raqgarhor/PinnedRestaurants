@@ -1,7 +1,9 @@
 import { check } from 'express-validator'
 import { checkFileIsImage, checkFileMaxSize } from './FileValidationHelper.js'
 const maxFileSize = 2000000 // around 2Mb
-
+/*
+EL BACKEND ESPERA QUE LA PINNED PROPIEDAD SEA BOOLEANA Y OPCIONAL. SI LA PROPIEDAD NO ESTÁ PRESENTE, SE DEBE CREAR COMO NO FIJADA.
+*/
 const create = [
   check('name').exists().isString().isLength({ min: 1, max: 255 }).trim(),
   check('description').optional({ nullable: true, checkFalsy: true }).isString().trim(),
@@ -24,7 +26,10 @@ const create = [
   }).withMessage('Please upload an image with format (jpeg, png).'),
   check('logo').custom((value, { req }) => {
     return checkFileMaxSize(req, 'logo', maxFileSize)
-  }).withMessage('Maximum file size of ' + maxFileSize / 1000000 + 'MB')
+  }).withMessage('Maximum file size of ' + maxFileSize / 1000000 + 'MB'),
+  // SOLUCION
+  check('pinned').optional().isBoolean().toBoolean()
+
 ]
 const update = [
   check('name').exists().isString().isLength({ min: 1, max: 255 }).trim(),
